@@ -1,40 +1,75 @@
 %% MATLAB myDAQ Data Acquisition File
-%
+% Created by Garrett Wood (8/5/2017)
+% Modified by Joseph B. Tipton, Jr. (2/7/2018)
 
-clc ; close all
+clc
+clear all
 
-%% Configuration Variables
-
-Continuous = 0; % Set to 0 for finite data Acquisition
-HardwareTimed = 0; % Set to 0 for software timed data Acquisition.
-Rate = 1; 
-NSamples = 20;
-Duration = 10;
-Pause = 1;
-
-%% Method Selection
-
-if Continuous == 1 && HardwareTimed == 1
-    
-    Data = HWT_Continuous( Rate );
-    
-elseif Continuous == 1 && HardwareTimed == 0
-    
-    Data = SWT_Continuous( Pause , NSamples ); % SWT_Continuous may be run without the "NSamples" input but the acquisition must then be ended manually.
-    
-elseif Continuous == 0 && HardwareTimed == 1
-    
-    Data = HWT_Finite( Rate , Duration );
-    
-elseif Continuous == 0 && HardwareTimed == 0    
-    
-    Data = SWT_Finite( Pause , NSamples );
-    
+%% Graphical User Interface
+str = {'Hardware Timed Continuous Sampling','Software Timed Continuous Sampling','Hardware Timed Finite Sampling','Software Timed Finite Sampling'};
+[s,v] = listdlg('PromptString','Select one mode of data collection:',...
+                'SelectionMode','single',...
+                'ListString',str,...
+                'ListSize',[300 160]);
+            
+if v == 0
+    error('You must select a DAQ mode.')
 end
 
-%% Hardware Timed Continuous Data Acquisition
+switch s
+    case 1
+        %Hardware Timed Continuous Sampling
+        prompt = {'Enter either 2 or 10 for voltage range:','Enter sampling rate (Hz):'};
+        dlg_title = 'Hardware Timed Continuous Sampling';
+        num_lines = 1;
+        defaultans = {'2','1000'};
+        answer = inputdlg(prompt,dlg_title,num_lines,defaultans);
+        if str2num(answer{1,:})~=2 && str2num(answer{1,:})~=10
+            error('Valid voltage ranges for NI myDAQ are +- 2V and +- 10V')
+        end
+        VoltageRange = [-str2num(answer{1,:}), str2num(answer{1,:})];
+        Rate = str2num(answer{2,:});
+        
+        Data = HWT_Continuous( VoltageRange, Rate );
+    case 2
+        %Software Timed Continuous Sampling
+        msgbox( 'This feature is still in development.')
+    case 3
+        %Hardware Timed Finite Sampling
+        prompt = {'Enter either 2 or 10 for voltage range:','Enter sampling rate (Hz):','Enter test duration (sec):'};
+        dlg_title = 'Hardware Timed Finite Sampling';
+        num_lines = 1;
+        defaultans = {'2','1000','1'};
+        answer = inputdlg(prompt,dlg_title,num_lines,defaultans);
+        if str2num(answer{1,:})~=2 && str2num(answer{1,:})~=10
+            error('Valid voltage ranges for NI myDAQ are +- 2V and +- 10V')
+        end
+        VoltageRange = [-str2num(answer{1,:}), str2num(answer{1,:})];
+        Rate = str2num(answer{2,:});
+        Duration = str2num(answer{3,:});
+        
+        Data = HWT_Finite( VoltageRange, Rate , Duration );
+    case 4
+        %Software Timed Finite Sampling
+        prompt = {'Enter either 2 or 10 for voltage range:','Enter pause between samples (sec):','Enter number of samples:'};
+        dlg_title = 'Software Timed Finite Sampling';
+        num_lines = 1;
+        defaultans = {'2','0.5','4'};
+        answer = inputdlg(prompt,dlg_title,num_lines,defaultans);
+        if str2num(answer{1,:})~=2 && str2num(answer{1,:})~=10
+            error('Valid voltage ranges for NI myDAQ are +- 2V and +- 10V')
+        end
+        VoltageRange = [-str2num(answer{1,:}), str2num(answer{1,:})];
+        Pause = str2num(answer{2,:});
+        NSamples = str2num(answer{3,:});
+        
+        Data = SWT_Finite( VoltageRange, Pause , NSamples );
+    otherwise
+        error('You must select a DAQ mode.')
+end
 
-function [ Data ] = HWT_Continuous( rate )
+%% Data Collection Subroutines
+function [ Data ] = HWT_Continuous( range, rate )
     
     Times = [];
     SessionData = [];
@@ -45,8 +80,9 @@ function [ Data ] = HWT_Continuous( rate )
 
     %%  Add channels specified by subsystem type and device
     
-    daqSession_0.addAnalogInputChannel( 'myDAQ1' , 'ai0' , 'Voltage' );
-
+    ch1 = daqSession_0.addAnalogInputChannel( 'myDAQ1' , 'ai0' , 'Voltage' );
+    ch1.Range = range;
+    
     %%  Configure properties
     
     daqSession_0.Rate = rate;
@@ -80,9 +116,8 @@ function [ Data ] = HWT_Continuous( rate )
     
 end 
 
-%% Hardware Timed Finite Data Acquisition
 
-function [ Data ] = HWT_Finite( rate , dur )
+function [ Data ] = HWT_Finite( range, rate , dur )
 
     %%  Create a data acquisition session
     
@@ -90,8 +125,9 @@ function [ Data ] = HWT_Finite( rate , dur )
 
     %%  Add channels specified by subsystem type and device
     
-    daqSession_0.addAnalogInputChannel( 'myDAQ1' , 'ai0' , 'Voltage' );
-
+    ch1 = daqSession_0.addAnalogInputChannel( 'myDAQ1' , 'ai0' , 'Voltage' );
+    ch1.Range = range;
+    
     %%  Configure properties
     
     daqSession_0.DurationInSeconds = dur;
@@ -110,59 +146,19 @@ function [ Data ] = HWT_Finite( rate , dur )
     
 end 
 
-%% Software Timed Continuous Data Acquisition
 
-function [ Data ] = SWT_Continuous( delay , N ) 
-
-       
-    daqSession_0 = daq.createSession( 'ni' );
-    daqSession_0.addAnalogInputChannel( 'myDAQ1' , 'ai0' , 'Voltage' ); 
-    Data = [];
-    
-    switch nargin
-        
-        case 2
-    
-            while length( Data ) < N
-        
-                Data = [ Data ; clock , daqSession_0.inputSingleScan; ];
-                pause( delay )
-
-            end
-            
-        case 1
-            
-            msgbox( 'To end the Data Acquisition press " ctrl + c ".')
-            
-            while ( 1 )
-        
-                Data = [ Data ; clock , daqSession_0.inputSingleScan; ];
-                pause( delay )
-
-            end
-            
-    end
-    
-    daqSession_0.release();
-    delete( daqSession_0 );
-    clear daqSession_0;  
-    
-end
-    
-%% Software Timed Finite Data Acquisition
-
-function [ Data ] = SWT_Finite( delay , N )
+function [ Data ] = SWT_Finite( range, delay , N )
 
     %% Test Code for Timer Function
-    Data = TestTimer( N , delay );
+    Data = TestTimer( range, N , delay );
 
-    function [ Data ] = TestTimer( N , delay )
+    function [ Data ] = TestTimer( range, N , delay )
 
         %% Timer Setup
 
         Data = [];
         AcquisitionTimer = timer;
-        AcquisitionTimer.TimerFcn = @( ~ , thisEvent ) TimedData;
+        AcquisitionTimer.TimerFcn = @( ~ , thisEvent ) TimedData(range);
         AcquisitionTimer.TasksToExecute = N;
         AcquisitionTimer.Period = delay;
         AcquisitionTimer.ExecutionMode = 'fixedrate';
@@ -173,12 +169,14 @@ function [ Data ] = SWT_Finite( delay , N )
         pause( delay*N ) 
         delete( AcquisitionTimer )
 
-        function TimedData
+        function TimedData(range)
 
             %% Acquisition Setup
 
             daqSession_0 = daq.createSession( 'ni' );
-            daqSession_0.addAnalogInputChannel( 'myDAQ1' , 'ai0' , 'Voltage' ); 
+            ch1 = daqSession_0.addAnalogInputChannel( 'myDAQ1' , 'ai0' , 'Voltage' );
+            ch1.Range = range;
+                        
             Data = [ Data ; clock , daqSession_0.inputSingleScan; ];
 
             daqSession_0.release();
